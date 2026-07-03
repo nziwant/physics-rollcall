@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tgz-physics-rollcall-v1-4';
+const CACHE_NAME = 'tgz-physics-rollcall-v1-10';
 const ASSETS = [
   './',
   './index.html',
@@ -6,7 +6,10 @@ const ASSETS = [
   './script.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './sounds/unlock.wav',
+  './sounds/summon.wav',
+  './sounds/lock.wav'
 ];
 
 self.addEventListener('install', event => {

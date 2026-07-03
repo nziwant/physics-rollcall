@@ -1,3 +1,155 @@
+
+let audioCtx = null;
+let audioUnlocked = false;
+const SFX_FILES = {
+  unlock: './sounds/unlock.wav',
+  summon: './sounds/summon.wav',
+  lock: './sounds/lock.wav'
+};
+const sfxPool = {};
+
+function getSfx(name){
+  if(!sfxPool[name]){
+    const a = new Audio(SFX_FILES[name]);
+    a.preload = 'auto';
+    a.volume = 0.95;
+    sfxPool[name] = a;
+  }
+  return sfxPool[name];
+}
+
+function playSfx(name){
+  if(!settings.sound) return false;
+  try{
+    const base = getSfx(name);
+    const a = base.cloneNode(true);
+    a.volume = 0.95;
+    const p = a.play();
+    if(p && p.catch) p.catch(()=>{});
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+function preloadSfx(){
+  Object.keys(SFX_FILES).forEach(k=>{
+    try{ getSfx(k).load(); }catch(e){}
+  });
+}
+
+
+function getChineseVoice(){
+  if(!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+  return voices.find(v => /zh|Chinese|中文|Mandarin/i.test((v.lang||'') + ' ' + (v.name||''))) || voices[0] || null;
+}
+
+function speakText(text, opts={}){
+  if(!settings.sound) return false;
+  if(!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return false;
+  try{
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'zh-CN';
+    const voice = getChineseVoice();
+    if(voice) utter.voice = voice;
+    utter.rate = opts.rate ?? 0.96;
+    utter.pitch = opts.pitch ?? 0.92;
+    utter.volume = opts.volume ?? 1;
+    window.speechSynthesis.speak(utter);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+function speakIntro(){
+  return speakText('有请爱卿——', { rate: 0.9, pitch: 0.88, volume: 1 });
+}
+
+function speakPraise(){
+  return speakText('陛下万岁万岁万万岁', { rate: 0.96, pitch: 0.92, volume: 1 });
+}
+
+function ensureAudio(){
+  if(!settings.sound) return false;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if(!AudioContext) return false;
+  if(!audioCtx) audioCtx = new AudioContext();
+  if(audioCtx.state === 'suspended'){
+    audioCtx.resume().catch(()=>{});
+  }
+  audioUnlocked = audioCtx.state === 'running';
+  return true;
+}
+
+function soundButtonLabel(){
+  return settings.sound ? '🔊 声音：开' : '🔇 声音：关';
+}
+
+function toggleSound(){
+  settings.sound = !settings.sound;
+  save();
+  if(settings.sound){
+    ensureAudio();
+    preloadSfx();
+    playUnlockSound();
+    showToast('声音已开启');
+  }else{
+    try{ window.speechSynthesis?.cancel(); }catch(e){}
+    showToast('声音已关闭');
+  }
+  render();
+}
+
+function playTone(freq=660, duration=0.08, volume=0.035, type='sine'){
+  if(!settings.sound) return;
+  if(!ensureAudio()) return;
+  if(!audioCtx || audioCtx.state !== 'running') return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(volume, t + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+
+function playChord(freqs=[440,660], duration=0.12, volume=0.028, type='sine', delay=0){
+  freqs.forEach(f=>setTimeout(()=>playTone(f, duration, volume, type), delay));
+}
+
+function playUnlockSound(){
+  preloadSfx();
+  if(playSfx('unlock')) return;
+  playTone(523.25, 0.08, 0.03, 'triangle');
+  setTimeout(()=>playTone(659.25, 0.08, 0.032, 'triangle'), 80);
+  setTimeout(()=>playChord([783.99,1046.5], 0.14, 0.024, 'sine'), 170);
+}
+
+function playRollStart(){
+  preloadSfx();
+  if(speakIntro()) return;
+  if(playSfx('summon')) return;
+}
+
+function playLockSound(){
+  preloadSfx();
+  if(playSfx('lock')) return;
+  playTone(220.00, 0.06, 0.026, 'square');
+  setTimeout(()=>playTone(329.63, 0.08, 0.03, 'triangle'), 55);
+  setTimeout(()=>playChord([659.25,987.77], 0.14, 0.03, 'sine'), 125);
+  setTimeout(()=>playChord([783.99,1174.66], 0.18, 0.034, 'triangle'), 245);
+}
+
+function playTapSound(){ /* 已按需求去掉点击音 */ }
+
 const STORAGE_KEY = 'tgz_physics_rollcall_v1';
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -130,7 +282,7 @@ function renderClass(){
         <div id="targetName" class="target">待命</div>
         <div class="target-sub">ENERGY FIELD · TARGET LOCKED</div>
         <div class="toolbar stage-actions">
-          <button class="gold-btn" onclick="rollCall()">⚛️ 智能点卿</button>
+          <button class="gold-btn" onclick="rollCall()">⚛️ 智能点卿</button><button class="ghost-btn sound-unlock-btn" onclick="toggleSound()">${soundButtonLabel()}</button>
           <button class="ghost-btn" onclick="reroll()">重新抽取</button>
         </div>
       </div>
@@ -210,6 +362,7 @@ function toggleAbsent(id, btn){
 function saveAttendance(){ const c=getClass(); todaySession(c).savedAt = new Date().toISOString(); save(); closeModal(); renderClass(); showToast('签到已保存'); }
 
 function rollCall(){
+  playRollStart();
   const c=getClass();
   if(!c.students.length){ showToast('请先导入学生'); return; }
   const pool=remainingStudents(c);
@@ -224,6 +377,7 @@ function rollCall(){
     save(); renderClass();
     const finalTarget=$('targetName');
     if(finalTarget){ finalTarget.textContent=picked.name; finalTarget.classList.add('locked'); setTimeout(()=>finalTarget?.classList.remove('locked'),760); }
+    setTimeout(()=>{ if(!speakPraise()) playLockSound(); }, 120);
   });
 }
 function addRollLog(c, picked){
@@ -266,7 +420,6 @@ function animatePick(pool, done){
       targetEl.classList.remove('locking');
       targetEl.classList.add('locked');
       stage?.classList.remove('rolling');
-      beep();
       setTimeout(()=>targetEl.classList.remove('locked'),760);
       done(picked);
     }
@@ -335,7 +488,7 @@ function togglePresentationMode(on=!presentationMode){
 
 function openSettings(){
   openModal('设置', `<div class="form">
-    <label>音效<select id="soundSet"><option value="on" ${settings.sound?'selected':''}>开启</option><option value="off" ${!settings.sound?'selected':''}>关闭</option></select></label>
+    <p class="muted">班级页面右侧已提供“声音开/关”快捷开关；这里也可以统一设置默认状态。</p><label>音效<select id="soundSet"><option value="on" ${settings.sound?'selected':''}>开启</option><option value="off" ${!settings.sound?'selected':''}>关闭</option></select></label>
     <label>动画速度<select id="speedSet"><option value="fast" ${settings.speed==='fast'?'selected':''}>快</option><option value="standard" ${settings.speed==='standard'?'selected':''}>标准</option><option value="slow" ${settings.speed==='slow'?'selected':''}>稍慢</option></select></label>
     <button class="primary-btn" onclick="saveSettings()">保存设置</button>
     <div class="install-card">
@@ -367,7 +520,7 @@ function openSettings(){
   </div>`, true);
 }
 $('settingsBtn').onclick=openSettings;
-function saveSettings(){ settings.sound=$('soundSet').value==='on'; settings.speed=$('speedSet').value; save(); closeModal(); showToast('设置已保存'); }
+function saveSettings(){ settings.sound=$('soundSet').value==='on'; settings.speed=$('speedSet').value; save(); closeModal(); render(); showToast('设置已保存'); }
 function exportData(){ navigator.clipboard?.writeText(JSON.stringify(state,null,2)); $('importJson').value=JSON.stringify(state,null,2); showToast('数据已复制/显示'); }
 function downloadBackup(){ downloadText(`唐高祖课堂助手_数据备份_${today()}.json`, JSON.stringify(state,null,2), 'application/json;charset=utf-8'); showToast('备份文件已下载'); }
 function importBackupFile(input){
