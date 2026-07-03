@@ -1,0 +1,15 @@
+{
+  "name": "唐高祖讲物理 · 课堂点名助手",
+  "short_name": "点卿助手",
+  "description": "课堂签到、智能点卿、历史记录与投屏模式。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape-primary",
+  "background_color": "#050915",
+  "theme_color": "#050915",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
