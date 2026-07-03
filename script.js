@@ -42,7 +42,25 @@ function preloadSfx(){
 function getChineseVoice(){
   if(!('speechSynthesis' in window)) return null;
   const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
-  return voices.find(v => /zh|Chinese|中文|Mandarin/i.test((v.lang||'') + ' ' + (v.name||''))) || voices[0] || null;
+  if(!voices.length) return null;
+
+  const info = v => `${v.lang || ''} ${v.name || ''}`;
+  const isCantonese = v => /zh-HK|yue|cantonese|粤|香港/i.test(info(v));
+
+  // iPad/Safari 里“中文”可能包含粤语。这里强制优先普通话/大陆中文。
+  const priority = [
+    v => /zh-CN|zh-Hans/i.test(v.lang || '') && !isCantonese(v),
+    v => /Mandarin|普通话|國語|国语|Chinese \(China\)|China/i.test(info(v)) && !isCantonese(v),
+    v => /^zh/i.test(v.lang || '') && !/zh-HK/i.test(v.lang || '') && !isCantonese(v),
+    v => /Chinese|中文/i.test(info(v)) && !isCantonese(v)
+  ];
+
+  for(const test of priority){
+    const voice = voices.find(test);
+    if(voice) return voice;
+  }
+
+  return voices.find(v => !isCantonese(v)) || voices[0] || null;
 }
 
 function speakText(text, opts={}){
@@ -149,6 +167,13 @@ function playLockSound(){
 }
 
 function playTapSound(){ /* 已按需求去掉点击音 */ }
+
+
+if('speechSynthesis' in window){
+  try{
+    window.speechSynthesis.onvoiceschanged = () => { getChineseVoice(); };
+  }catch(e){}
+}
 
 const STORAGE_KEY = 'tgz_physics_rollcall_v1';
 const $ = (id) => document.getElementById(id);
