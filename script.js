@@ -244,6 +244,7 @@ function ensureClassData(c){
   c.sessions ||= {};
   c.answered ||= {};
   c.rollLogs ||= {};
+  c.homework ||= {};
 }
 function todaySession(c){ ensureClassData(c); const d=today(); c.sessions[d] ||= { date:d, absentIds: [] }; return c.sessions[d]; }
 function answeredSet(c){ ensureClassData(c); const d=today(); c.answered[d] ||= []; return new Set(c.answered[d]); }
@@ -315,6 +316,7 @@ function renderClass(){
     </section>
     <div class="toolbar class-toolbar">
       <button class="primary-btn" onclick="openAttendance()">课堂签到</button>
+      <button class="gold-btn" onclick="openHomework()">作业检查</button>
       <button class="ghost-btn" onclick="resetRound()">本轮重置</button>
       <button class="ghost-btn" onclick="openHistory()">签到记录</button>
       <button class="ghost-btn" onclick="openRollRecords()">课堂记录</button>
@@ -336,7 +338,7 @@ function renderStudentCards(c){
 function createClass(){
   const name=prompt('请输入班级名称，例如：高一暑假班');
   if(!name?.trim()) return;
-  state.classes.push({id:uid(), name:name.trim(), students:[], sessions:{}, answered:{}, rollLogs:{}});
+  state.classes.push({id:uid(), name:name.trim(), students:[], sessions:{}, answered:{}, rollLogs:{}, homework:{}});
   save(); render();
 }
 function enterClass(id){ currentClassId=id; save(); render(); }
@@ -363,6 +365,10 @@ function removeStudent(id){
   Object.values(c.sessions||{}).forEach(se=>se.absentIds=(se.absentIds||[]).filter(x=>x!==id));
   Object.keys(c.answered||{}).forEach(d=>c.answered[d]=c.answered[d].filter(x=>x!==id));
   Object.keys(c.rollLogs||{}).forEach(d=>c.rollLogs[d]=c.rollLogs[d].filter(x=>x.studentId!==id));
+  Object.values(c.homework||{}).forEach(hw=>{
+    hw.presentIds=(hw.presentIds||[]).filter(x=>x!==id);
+    hw.missingIds=(hw.missingIds||[]).filter(x=>x!==id);
+  });
   save(); openStudents(); renderClass();
 }
 
@@ -385,6 +391,93 @@ function toggleAbsent(id, btn){
   const summary=$('attendanceSummary'); if(summary) summary.textContent = attendanceSummaryText(c);
 }
 function saveAttendance(){ const c=getClass(); todaySession(c).savedAt = new Date().toISOString(); save(); closeModal(); renderClass(); showToast('签到已保存'); }
+
+function todayHomework(c){
+  ensureClassData(c);
+  const d=today();
+  const presentIds = presentStudents(c).map(s=>s.id);
+  c.homework[d] ||= { date:d, presentIds:[...presentIds], missingIds:[], savedAt:null };
+  const hw = c.homework[d];
+  hw.presentIds = [...presentIds];
+  hw.missingIds = (hw.missingIds||[]).filter(id=>presentIds.includes(id));
+  return hw;
+}
+
+function homeworkSummaryText(c, hw=todayHomework(c)){
+  const presentCount = hw.presentIds?.length || 0;
+  const missingCount = hw.missingIds?.length || 0;
+  return `应交 ${presentCount} · 已交 ${Math.max(presentCount-missingCount,0)} · 未交 ${missingCount}`;
+}
+
+function latestHomeworkDateBefore(c, date=today()){
+  ensureClassData(c);
+  return Object.keys(c.homework||{})
+    .filter(d=>d < date && c.homework[d] && c.homework[d].savedAt)
+    .sort((a,b)=>b.localeCompare(a))[0] || null;
+}
+
+function renderHomeworkRecord(c, date){
+  if(!date) return `<div class="record-card homework-prev"><h3>上次作业提交情况</h3><p class="muted">暂无历史作业记录。</p></div>`;
+  const hw=c.homework[date];
+  const presentIds=new Set(hw.presentIds||[]);
+  const missingIds=new Set(hw.missingIds||[]);
+  const submitted = c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  const missing = c.students.filter(s=>missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  return `<div class="record-card homework-prev">
+    <div class="row"><h3>上次作业提交情况</h3><span class="record-badge">${date}</span></div>
+    <p class="muted">${homeworkSummaryText(c, hw)}</p>
+    <div class="homework-result"><b class="ok-text">已交：</b>${submitted}</div>
+    <div class="homework-result"><b class="danger-text">未交：</b>${missing}</div>
+  </div>`;
+}
+
+function openHomework(){
+  const c=getClass();
+  const prevDate = latestHomeworkDateBefore(c);
+  const hw = todayHomework(c);
+  const missing = new Set(hw.missingIds||[]);
+  const present = c.students.filter(s=>(hw.presentIds||[]).includes(s.id));
+  const todayRows = present.map(s=>`<div class="attendance-row homework-row"><strong>${esc(s.name)}</strong><button class="switch ${missing.has(s.id)?'absent':''}" onclick="toggleHomework('${s.id}', this)">${missing.has(s.id)?'未提交':'已提交'}</button></div>`).join('') || '<p class="muted">今日暂无出勤学生。请先完成课堂签到。</p>';
+  openModal('作业检查', `
+    ${renderHomeworkRecord(c, prevDate)}
+    <div class="divider"></div>
+    <div class="row"><div><h3>今日作业提交登记</h3><p class="muted">默认出勤学生全部“已提交”，把没交的学生切换为“未提交”。</p></div><span class="record-badge">${today()}</span></div>
+    <div id="homeworkList">${todayRows}</div>
+    <div class="attendance-summary" id="homeworkSummary">${homeworkSummaryText(c, hw)}</div>
+    <div class="divider"></div>
+    <button class="primary-btn" onclick="saveHomework()">保存作业记录</button>
+  `, true);
+}
+
+function toggleHomework(id, btn){
+  const c=getClass();
+  const hw=todayHomework(c);
+  const missing=new Set(hw.missingIds||[]);
+  if(missing.has(id)){
+    missing.delete(id);
+    btn.textContent='已提交';
+    btn.classList.remove('absent');
+  }else{
+    missing.add(id);
+    btn.textContent='未提交';
+    btn.classList.add('absent');
+  }
+  hw.missingIds=[...missing];
+  save();
+  const summary=$('homeworkSummary');
+  if(summary) summary.textContent = homeworkSummaryText(c, hw);
+}
+
+function saveHomework(){
+  const c=getClass();
+  const hw=todayHomework(c);
+  hw.savedAt = new Date().toISOString();
+  save();
+  closeModal();
+  renderClass();
+  showToast('作业记录已保存');
+}
+
 
 function rollCall(){
   playRollStart();

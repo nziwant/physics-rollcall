@@ -91,3 +91,11 @@ body.standalone .topbar{padding-top:max(0px,env(safe-area-inset-top))}
 @media (pointer:coarse){button{min-height:52px}.primary-btn,.ghost-btn,.danger-btn,.gold-btn{padding:14px 19px;border-radius:17px}.toolbar{gap:14px}.class-title{font-size:26px}.modal-card{max-height:86vh}}
 
 @keyframes titleGlow{0%,100%{box-shadow:0 0 30px rgba(217,184,111,.24),0 0 58px rgba(80,217,255,.12), inset 0 0 24px rgba(255,255,255,.06);filter:brightness(1)}50%{box-shadow:0 0 38px rgba(217,184,111,.36),0 0 72px rgba(80,217,255,.2), inset 0 0 32px rgba(255,255,255,.08);filter:brightness(1.08)}}
+
+
+/* === V1.12：作业检查 === */
+.homework-prev{border-color:rgba(217,184,111,.22);background:linear-gradient(180deg,rgba(217,184,111,.08),rgba(255,255,255,.04))}
+.homework-result{margin-top:8px;line-height:1.8;color:var(--text)}
+.ok-text{color:var(--ok);margin-right:6px}
+.danger-text{color:#ffc0c8;margin-right:6px}
+.homework-row .switch{min-width:92px}
