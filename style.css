@@ -99,3 +99,56 @@ body.standalone .topbar{padding-top:max(0px,env(safe-area-inset-top))}
 .ok-text{color:var(--ok);margin-right:6px}
 .danger-text{color:#ffc0c8;margin-right:6px}
 .homework-row .switch{min-width:92px}
+
+
+/* === V1.13：作业日期选择 / 补录修改 === */
+.homework-date-bar{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+  padding:14px;
+  margin-bottom:14px;
+  border-radius:18px;
+  background:rgba(80,217,255,.07);
+  border:1px solid rgba(80,217,255,.18);
+}
+.homework-date-bar label{
+  display:grid;
+  gap:8px;
+  min-width:220px;
+  color:var(--muted);
+}
+.homework-date-bar input[type="date"]{
+  color-scheme:dark;
+}
+.homework-live-summary{
+  margin-top:10px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.1);
+}
+
+
+/* === V1.14：作业页补录考勤 === */
+.supplement-box{
+  margin-top:14px;
+  padding:12px 14px;
+  border-radius:16px;
+  background:rgba(217,184,111,.06);
+  border:1px solid rgba(217,184,111,.18);
+}
+.supplement-box summary{
+  cursor:pointer;
+  color:var(--gold);
+  font-weight:800;
+  letter-spacing:.04em;
+}
+.supplement-row{
+  background:rgba(217,184,111,.055);
+}
+.supplement-row .ghost-btn{
+  min-width:160px;
+}

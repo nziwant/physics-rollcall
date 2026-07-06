@@ -392,15 +392,44 @@ function toggleAbsent(id, btn){
 }
 function saveAttendance(){ const c=getClass(); todaySession(c).savedAt = new Date().toISOString(); save(); closeModal(); renderClass(); showToast('签到已保存'); }
 
-function todayHomework(c){
+
+function studentsPresentForDate(c, date=today()){
   ensureClassData(c);
-  const d=today();
-  const presentIds = presentStudents(c).map(s=>s.id);
-  c.homework[d] ||= { date:d, presentIds:[...presentIds], missingIds:[], savedAt:null };
-  const hw = c.homework[d];
-  hw.presentIds = [...presentIds];
-  hw.missingIds = (hw.missingIds||[]).filter(id=>presentIds.includes(id));
+  const session = c.sessions?.[date];
+  if(session){
+    const abs = new Set(session.absentIds || []);
+    return c.students.filter(s=>!abs.has(s.id));
+  }
+  if(date === today()) return presentStudents(c);
+  return c.students;
+}
+
+function homeworkForDate(c, date=today()){
+  ensureClassData(c);
+  const presentIds = studentsPresentForDate(c, date).map(s=>s.id);
+  c.homework[date] ||= { date, presentIds:[...presentIds], missingIds:[], savedAt:null };
+  const hw = c.homework[date];
+
+  // 已保存的历史记录，保持当时的出勤名单；未保存的新记录，按该日期签到名单生成。
+  if(!hw.savedAt){
+    hw.presentIds = [...presentIds];
+  }else{
+    hw.presentIds = (hw.presentIds || []).filter(id => c.students.some(s=>s.id===id));
+  }
+
+  hw.missingIds = (hw.missingIds || []).filter(id => (hw.presentIds || []).includes(id));
   return hw;
+}
+
+function todayHomework(c){
+  return homeworkForDate(c, today());
+}
+
+function yesterday(){
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 
 function homeworkSummaryText(c, hw=todayHomework(c)){
@@ -431,27 +460,75 @@ function renderHomeworkRecord(c, date){
   </div>`;
 }
 
-function openHomework(){
+function renderSelectedHomeworkSummary(c, hw){
+  const presentIds=new Set(hw.presentIds||[]);
+  const missingIds=new Set(hw.missingIds||[]);
+  const submitted = c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  const missing = c.students.filter(s=>missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  return `<div class="homework-result"><b class="ok-text">已交：</b>${submitted}</div><div class="homework-result"><b class="danger-text">未交：</b>${missing}</div>`;
+}
+
+
+function openHomework(date=today()){
   const c=getClass();
-  const prevDate = latestHomeworkDateBefore(c);
-  const hw = todayHomework(c);
+  const selectedDate = date || today();
+  const prevDate = latestHomeworkDateBefore(c, selectedDate);
+  const hw = homeworkForDate(c, selectedDate);
   const missing = new Set(hw.missingIds||[]);
-  const present = c.students.filter(s=>(hw.presentIds||[]).includes(s.id));
-  const todayRows = present.map(s=>`<div class="attendance-row homework-row"><strong>${esc(s.name)}</strong><button class="switch ${missing.has(s.id)?'absent':''}" onclick="toggleHomework('${s.id}', this)">${missing.has(s.id)?'未提交':'已提交'}</button></div>`).join('') || '<p class="muted">今日暂无出勤学生。请先完成课堂签到。</p>';
+  const presentIds = new Set(hw.presentIds||[]);
+  const present = c.students.filter(s=>presentIds.has(s.id));
+  const notInList = c.students.filter(s=>!presentIds.has(s.id));
+  const todayRows = present.map(s=>`<div class="attendance-row homework-row"><strong>${esc(s.name)}</strong><button class="switch ${missing.has(s.id)?'absent':''}" onclick="toggleHomework('${s.id}', this, '${selectedDate}')">${missing.has(s.id)?'未提交':'已提交'}</button></div>`).join('') || '<p class="muted">该日期暂无应交学生。如果是今天，请先完成课堂签到；如果是补录，请确认该日期是否有签到记录。</p>';
+  const supplementRows = notInList.map(s=>`<div class="attendance-row homework-row supplement-row"><strong>${esc(s.name)}</strong><button class="ghost-btn" onclick="supplementAttendanceFromHomework('${s.id}', '${selectedDate}')">补录出勤并记为已提交</button></div>`).join('') || '<p class="muted">没有需要补录的学生。</p>';
   openModal('作业检查', `
     ${renderHomeworkRecord(c, prevDate)}
     <div class="divider"></div>
-    <div class="row"><div><h3>今日作业提交登记</h3><p class="muted">默认出勤学生全部“已提交”，把没交的学生切换为“未提交”。</p></div><span class="record-badge">${today()}</span></div>
+    <div class="homework-date-bar">
+      <label>作业日期
+        <input id="homeworkDate" type="date" value="${selectedDate}" onchange="openHomework(this.value)">
+      </label>
+      <div class="actions">
+        <button class="ghost-btn" onclick="openHomework('${today()}')">今天</button>
+        <button class="ghost-btn" onclick="openHomework('${yesterday()}')">昨天</button>
+      </div>
+    </div>
+    <div class="row"><div><h3>${selectedDate} 作业提交登记</h3><p class="muted">默认该日期出勤学生全部“已提交”，把没交的学生切换为“未提交”。过了 12 点也可以切到“昨天”补录或修改。</p></div><span class="record-badge">${hw.savedAt?'已保存':'未保存'}</span></div>
     <div id="homeworkList">${todayRows}</div>
     <div class="attendance-summary" id="homeworkSummary">${homeworkSummaryText(c, hw)}</div>
+    <div class="homework-live-summary" id="homeworkLiveSummary">${renderSelectedHomeworkSummary(c, hw)}</div>
+    <details class="supplement-box">
+      <summary>补录出勤学生</summary>
+      <p class="muted">如果某个学生原本不在应交名单里，但后来发现他到课并交了作业，可在这里补录。补录后会同步修改该日期考勤，并把作业记为已提交。</p>
+      <div>${supplementRows}</div>
+    </details>
     <div class="divider"></div>
-    <button class="primary-btn" onclick="saveHomework()">保存作业记录</button>
+    <button class="primary-btn" onclick="saveHomework('${selectedDate}')">保存 ${selectedDate} 作业记录</button>
   `, true);
 }
 
-function toggleHomework(id, btn){
+
+function supplementAttendanceFromHomework(id, date=today()){
   const c=getClass();
-  const hw=todayHomework(c);
+  ensureClassData(c);
+  c.sessions[date] ||= { date, absentIds: [] };
+  c.sessions[date].absentIds = (c.sessions[date].absentIds || []).filter(x=>x!==id);
+  c.sessions[date].savedAt ||= new Date().toISOString();
+
+  c.homework[date] ||= { date, presentIds:[], missingIds:[], savedAt:null };
+  const hw = c.homework[date];
+  hw.presentIds ||= [];
+  if(!hw.presentIds.includes(id)) hw.presentIds.push(id);
+  hw.missingIds = (hw.missingIds || []).filter(x=>x!==id);
+
+  save();
+  openHomework(date);
+  const student = c.students.find(s=>s.id===id);
+  showToast(`${student ? student.name : '学生'} 已补录出勤，并记为已提交`);
+}
+
+function toggleHomework(id, btn, date=today()){
+  const c=getClass();
+  const hw=homeworkForDate(c, date);
   const missing=new Set(hw.missingIds||[]);
   if(missing.has(id)){
     missing.delete(id);
@@ -466,38 +543,20 @@ function toggleHomework(id, btn){
   save();
   const summary=$('homeworkSummary');
   if(summary) summary.textContent = homeworkSummaryText(c, hw);
+  const live=$('homeworkLiveSummary');
+  if(live) live.innerHTML = renderSelectedHomeworkSummary(c, hw);
 }
 
-function saveHomework(){
+function saveHomework(date=today()){
   const c=getClass();
-  const hw=todayHomework(c);
+  const hw=homeworkForDate(c, date);
   hw.savedAt = new Date().toISOString();
   save();
   closeModal();
   renderClass();
-  showToast('作业记录已保存');
+  showToast(`${date} 作业记录已保存`);
 }
 
-
-function rollCall(){
-  playRollStart();
-  const c=getClass();
-  if(!c.students.length){ showToast('请先导入学生'); return; }
-  const pool=remainingStudents(c);
-  if(!pool.length){
-    if(confirm('本轮点卿完成，是否开启新一轮？')){ setAnswered(c,new Set()); lastCandidate=null; save(); renderClass(); }
-    return;
-  }
-  animatePick(pool, (picked)=>{
-    const ans=answeredSet(c); ans.add(picked.id); setAnswered(c, ans);
-    lastCandidate=picked;
-    addRollLog(c, picked);
-    save(); renderClass();
-    const finalTarget=$('targetName');
-    if(finalTarget){ finalTarget.textContent=picked.name; finalTarget.classList.add('locked'); setTimeout(()=>finalTarget?.classList.remove('locked'),760); }
-    setTimeout(()=>{ if(!speakPraise()) playLockSound(); }, 120);
-  });
-}
 function addRollLog(c, picked){
   const list = rollLogList(c);
   list.push({ id: uid(), studentId: picked.id, name: picked.name, time: currentTime(), date: today() });
