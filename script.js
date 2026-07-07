@@ -252,6 +252,12 @@ function setAnswered(c, set){ ensureClassData(c); c.answered[today()] = [...set]
 function absentSet(c){ return new Set(todaySession(c).absentIds || []); }
 function presentStudents(c){ const abs = absentSet(c); return c.students.filter(s=>!abs.has(s.id)); }
 function remainingStudents(c){ const ans=answeredSet(c); return presentStudents(c).filter(s=>!ans.has(s.id)); }
+function sortStudents(list){
+  return [...list].sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''), 'zh-CN-u-co-pinyin', {sensitivity:'base'}));
+}
+function sortNames(list){
+  return [...list].sort((a,b)=>String(a||'').localeCompare(String(b||''), 'zh-CN-u-co-pinyin', {sensitivity:'base'}));
+}
 function rollLogList(c, date=today()){ ensureClassData(c); c.rollLogs[date] ||= []; return c.rollLogs[date]; }
 function stats(c){
   const total=c.students.length;
@@ -328,7 +334,7 @@ function renderClass(){
 function renderStudentCards(c){
   if(!c.students.length) return `<div class="empty">暂无学生，请先导入名单。</div>`;
   const abs=absentSet(c), ans=answeredSet(c);
-  return c.students.map(s=>{
+  return sortStudents(c.students).map(s=>{
     const cls=abs.has(s.id)?'absent':ans.has(s.id)?'answered':'';
     const tag=abs.has(s.id)?'未出勤':ans.has(s.id)?'已回答':'未回答';
     return `<div class="student ${cls}"><span>${esc(s.name)}</span><span class="tag">${tag}</span></div>`;
@@ -348,7 +354,7 @@ function deleteClass(id){ if(!confirm('确定删除这个班级？学生和记�
 
 function openStudents(){
   const c=getClass();
-  openModal('学生管理', `<div class="form"><textarea id="bulkNames" placeholder="每行一个姓名，例如：\n张三\n李四\n王五"></textarea><button class="primary-btn" onclick="importStudents()">批量导入并追加</button><div class="divider"></div><div id="studentManageList">${c.students.map(s=>`<div class="attendance-row"><input value="${escAttr(s.name)}" onchange="editStudent('${s.id}', this.value)"><button class="danger-btn" onclick="removeStudent('${s.id}')">删除</button></div>`).join('') || '<p class="muted">暂无学生</p>'}</div></div>`);
+  openModal('学生管理', `<div class="form"><textarea id="bulkNames" placeholder="每行一个姓名，例如：\n张三\n李四\n王五"></textarea><button class="primary-btn" onclick="importStudents()">批量导入并追加</button><div class="divider"></div><div id="studentManageList">${sortStudents(c.students).map(s=>`<div class="attendance-row"><input value="${escAttr(s.name)}" onchange="editStudent('${s.id}', this.value)"><button class="danger-btn" onclick="removeStudent('${s.id}')">删除</button></div>`).join('') || '<p class="muted">暂无学生</p>'}</div></div>`);
 }
 function importStudents(){
   const c=getClass();
@@ -374,7 +380,7 @@ function removeStudent(id){
 
 function openAttendance(){
   const c=getClass(); const abs=absentSet(c);
-  openModal('课堂签到', `<p class="muted">默认全部出勤，把没来的学生切换为“未出勤”。未出勤学生不会参与今日点卿。</p><div id="attendanceList">${c.students.map(s=>`<div class="attendance-row"><strong>${esc(s.name)}</strong><button class="switch ${abs.has(s.id)?'absent':''}" onclick="toggleAbsent('${s.id}', this)">${abs.has(s.id)?'未出勤':'出勤'}</button></div>`).join('') || '<p class="muted">暂无学生</p>'}</div><div class="attendance-summary" id="attendanceSummary">${attendanceSummaryText(c)}</div><div class="divider"></div><button class="primary-btn" onclick="saveAttendance()">保存签到</button>`);
+  openModal('课堂签到', `<p class="muted">默认全部出勤，把没来的学生切换为“未出勤”。未出勤学生不会参与今日点卿。</p><div id="attendanceList">${sortStudents(c.students).map(s=>`<div class="attendance-row"><strong>${esc(s.name)}</strong><button class="switch ${abs.has(s.id)?'absent':''}" onclick="toggleAbsent('${s.id}', this)">${abs.has(s.id)?'未出勤':'出勤'}</button></div>`).join('') || '<p class="muted">暂无学生</p>'}</div><div class="attendance-summary" id="attendanceSummary">${attendanceSummaryText(c)}</div><div class="divider"></div><button class="primary-btn" onclick="saveAttendance()">保存签到</button>`);
 }
 function attendanceSummaryText(c){ const st=stats(c); return `总人数 ${st.total} · 出勤 ${st.present} · 未出勤 ${st.absent}`; }
 function toggleAbsent(id, btn){
@@ -450,8 +456,8 @@ function renderHomeworkRecord(c, date){
   const hw=c.homework[date];
   const presentIds=new Set(hw.presentIds||[]);
   const missingIds=new Set(hw.missingIds||[]);
-  const submitted = c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
-  const missing = c.students.filter(s=>missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  const submitted = sortStudents(c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id))).map(s=>esc(s.name)).join('、') || '无';
+  const missing = sortStudents(c.students.filter(s=>missingIds.has(s.id))).map(s=>esc(s.name)).join('、') || '无';
   return `<div class="record-card homework-prev">
     <div class="row"><h3>上次作业提交情况</h3><span class="record-badge">${date}</span></div>
     <p class="muted">${homeworkSummaryText(c, hw)}</p>
@@ -463,8 +469,8 @@ function renderHomeworkRecord(c, date){
 function renderSelectedHomeworkSummary(c, hw){
   const presentIds=new Set(hw.presentIds||[]);
   const missingIds=new Set(hw.missingIds||[]);
-  const submitted = c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
-  const missing = c.students.filter(s=>missingIds.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+  const submitted = sortStudents(c.students.filter(s=>presentIds.has(s.id) && !missingIds.has(s.id))).map(s=>esc(s.name)).join('、') || '无';
+  const missing = sortStudents(c.students.filter(s=>missingIds.has(s.id))).map(s=>esc(s.name)).join('、') || '无';
   return `<div class="homework-result"><b class="ok-text">已交：</b>${submitted}</div><div class="homework-result"><b class="danger-text">未交：</b>${missing}</div>`;
 }
 
@@ -476,8 +482,8 @@ function openHomework(date=today()){
   const hw = homeworkForDate(c, selectedDate);
   const missing = new Set(hw.missingIds||[]);
   const presentIds = new Set(hw.presentIds||[]);
-  const present = c.students.filter(s=>presentIds.has(s.id));
-  const notInList = c.students.filter(s=>!presentIds.has(s.id));
+  const present = sortStudents(c.students.filter(s=>presentIds.has(s.id)));
+  const notInList = sortStudents(c.students.filter(s=>!presentIds.has(s.id)));
   const todayRows = present.map(s=>`<div class="attendance-row homework-row"><strong>${esc(s.name)}</strong><button class="switch ${missing.has(s.id)?'absent':''}" onclick="toggleHomework('${s.id}', this, '${selectedDate}')">${missing.has(s.id)?'未提交':'已提交'}</button></div>`).join('') || '<p class="muted">该日期暂无应交学生。如果是今天，请先完成课堂签到；如果是补录，请确认该日期是否有签到记录。</p>';
   const supplementRows = notInList.map(s=>`<div class="attendance-row homework-row supplement-row"><strong>${esc(s.name)}</strong><button class="ghost-btn" onclick="supplementAttendanceFromHomework('${s.id}', '${selectedDate}')">补录出勤并记为已提交</button></div>`).join('') || '<p class="muted">没有需要补录的学生。</p>';
   openModal('作业检查', `
@@ -557,6 +563,26 @@ function saveHomework(date=today()){
   showToast(`${date} 作业记录已保存`);
 }
 
+function rollCall(){
+  playRollStart();
+  const c=getClass();
+  if(!c.students.length){ showToast('请先导入学生'); return; }
+  const pool=remainingStudents(c);
+  if(!pool.length){
+    if(confirm('本轮点卿完成，是否开启新一轮？')){ setAnswered(c,new Set()); lastCandidate=null; save(); renderClass(); }
+    return;
+  }
+  animatePick(pool, (picked)=>{
+    const ans=answeredSet(c); ans.add(picked.id); setAnswered(c, ans);
+    lastCandidate=picked;
+    addRollLog(c, picked);
+    save(); renderClass();
+    const finalTarget=$('targetName');
+    if(finalTarget){ finalTarget.textContent=picked.name; finalTarget.classList.add('locked'); setTimeout(()=>finalTarget?.classList.remove('locked'),760); }
+    setTimeout(()=>{ if(!speakPraise()) playLockSound(); }, 120);
+  });
+}
+
 function addRollLog(c, picked){
   const list = rollLogList(c);
   list.push({ id: uid(), studentId: picked.id, name: picked.name, time: currentTime(), date: today() });
@@ -608,7 +634,7 @@ function openHistory(){
   const c=getClass();
   const rows=Object.values(c.sessions||{}).sort((a,b)=>b.date.localeCompare(a.date)).map(se=>{
     const abs=new Set(se.absentIds||[]);
-    const absentNames = c.students.filter(s=>abs.has(s.id)).map(s=>esc(s.name)).join('、') || '无';
+    const absentNames = sortStudents(c.students.filter(s=>abs.has(s.id))).map(s=>esc(s.name)).join('、') || '无';
     return `<div class="record-card"><div class="row"><h3>${se.date}</h3><span class="record-badge">出勤 ${c.students.length-abs.size} / ${c.students.length}</span></div><p>未出勤：${absentNames}</p></div>`;
   }).join('') || '<p class="muted">暂无签到记录</p>';
   openModal('签到记录', `<div class="actions"><button class="primary-btn" onclick="exportAttendanceCsv()">导出签到表 CSV</button></div><div class="divider"></div>${rows}`, true);
@@ -620,7 +646,7 @@ function exportAttendanceCsv(){
   dates.forEach(date=>{
     const se = c.sessions[date];
     const abs = new Set(se.absentIds||[]);
-    const absentNames = c.students.filter(s=>abs.has(s.id)).map(s=>s.name).join('、') || '无';
+    const absentNames = sortStudents(c.students.filter(s=>abs.has(s.id))).map(s=>s.name).join('、') || '无';
     const presentNames = c.students.filter(s=>!abs.has(s.id)).map(s=>s.name).join('、') || '无';
     rows.push([c.name,date,c.students.length,c.students.length-abs.size,abs.size,absentNames,presentNames]);
   });
